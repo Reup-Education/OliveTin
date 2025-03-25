@@ -8,13 +8,15 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"regexp"
+	"time"
+
 	config "github.com/OliveTin/OliveTin/internal/config"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/oauth2"
-	"io"
-	"net/http"
-	"time"
-	"os"
 )
 
 var (
@@ -40,8 +42,8 @@ func oauth2Init(cfg *config.Config) {
 		completeProviderConfig(providerName, providerConfig)
 
 		newConfig := &oauth2.Config{
-			ClientID:     providerConfig.ClientID,
-			ClientSecret: providerConfig.ClientSecret,
+			ClientID:     resolveCredentialConfigField(providerConfig.ClientID),
+			ClientSecret: resolveCredentialConfigField(providerConfig.ClientSecret),
 			Scopes:       providerConfig.Scopes,
 			Endpoint: oauth2.Endpoint{
 				AuthURL:  providerConfig.AuthUrl,
@@ -52,7 +54,7 @@ func oauth2Init(cfg *config.Config) {
 
 		registeredProviders[providerName] = newConfig
 
-		log.Debugf("Dumping newly registered provider: %v = %+v", providerName, providerConfig)
+		log.Debugf("Dumping newly registered provider: %v = %+v", providerName, newConfig)
 	}
 }
 
@@ -346,4 +348,18 @@ func parseOAuth2Cookie(r *http.Request) (string, string, string) {
 	log.Debugf("Found OAuth2 state: %+v", serverState)
 
 	return serverState.Username, serverState.Usergroup, cookie.Value
+}
+
+func resolveCredentialConfigField(field string) string {
+  r := regexp.MustCompile(`^\${{ *?(\S+) *?}}$`)
+
+  matches := r.FindStringSubmatch(field)
+
+  if matches != nil {
+    env := matches[1]
+    log.Debugf("Resolving oauth2 credential field \"%s\" from env \"%s\"", field, env)
+    return os.Getenv(env)
+  }
+
+  return field
 }
